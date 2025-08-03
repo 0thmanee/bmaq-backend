@@ -76,7 +76,7 @@ const start = async () => {
     await app.register(require('./routes/suivi'), { prefix: '/api/v1' });
 
     // Start server
-    const port = Number(process.env.PORT) || 3294;
+    const port = Number(process.env.PORT) || 3000;
     const host = process.env.HOST || '0.0.0.0';
     
     await app.listen({ port, host });
