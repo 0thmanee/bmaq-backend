@@ -156,7 +156,7 @@ var start = function () { return __awaiter(void 0, void 0, void 0, function () {
                 return [4 /*yield*/, app.register(require('./routes/suivi'), { prefix: '/api/v1' })];
             case 17:
                 _a.sent();
-                port = Number(process.env.PORT) || 3294;
+                port = Number(process.env.PORT) || 3000;
                 host = process.env.HOST || '0.0.0.0';
                 return [4 /*yield*/, app.listen({ port: port, host: host })];
             case 18:
