@@ -1,0 +1,531 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =================================
+// Core Entity Models
+// =================================
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String?
+  password           String
+  role               Role     @default(STARTUP)
+  status             UserStatus @default(PENDING)
+  email_verified     Boolean  @default(false)
+  verification_token String?  @unique
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  // Relations
+  startup            Startup?
+  budget_requests    BudgetRequest[]
+  event_attendances  EventAttendee[]
+  resource_uploads   Resource[]
+  resource_downloads ResourceDownload[]
+  suivi_responses    SuiviResponse[]
+  
+  // Auth relations
+  accounts           Account[]
+  sessions           Session[]
+
+  @@map("users")
+}
+
+model Startup {
+  id               String        @id @default(cuid())
+  user_id          String        @unique
+  company_name     String
+  description      String?
+  industry         String?
+  founded_year     Int?
+  team_size        String?
+  website          String?
+  logo_url         String?
+  status           StartupStatus @default(PENDING)
+  approved_by      String?
+  approved_at      DateTime?
+  rejection_reason String?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  // Relations
+  user             User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  budget           StartupBudget?
+  budget_categories BudgetCategory[]
+  budget_requests  BudgetRequest[]
+  event_attendances EventAttendee[]
+  suivi_responses  SuiviResponse[]
+  suivi_targets    SuiviTarget[]
+
+  @@map("startups")
+}
+
+model StartupBudget {
+  id               String   @id @default(cuid())
+  startup_id       String   @unique
+  total_budget     Decimal
+  used_budget      Decimal  @default(0)
+  remaining_budget Decimal
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  startup          Startup @relation(fields: [startup_id], references: [id], onDelete: Cascade)
+
+  @@map("startup_budgets")
+}
+
+model BudgetCategory {
+  id               String   @id @default(cuid())
+  startup_id       String
+  name             String
+  budget_allocated Decimal
+  budget_used      Decimal  @default(0)
+  color            String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  startup          Startup @relation(fields: [startup_id], references: [id], onDelete: Cascade)
+
+  @@unique([startup_id, name])
+  @@map("budget_categories")
+}
+
+// =================================
+// Budget Request Models
+// =================================
+
+model BudgetRequest {
+  id              String            @id @default(cuid())
+  startup_id      String
+  user_id         String
+  category        String
+  description     String
+  amount          Decimal
+  status          RequestStatus     @default(PENDING)
+  priority        Priority          @default(MEDIUM)
+  submission_date DateTime          @default(now())
+  review_date     DateTime?
+  reviewed_by     String?
+  notes           String?
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+
+  // Relations
+  startup         Startup           @relation(fields: [startup_id], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [user_id], references: [id])
+  attachments     RequestAttachment[]
+
+  @@map("budget_requests")
+}
+
+model RequestAttachment {
+  id              String        @id @default(cuid())
+  request_id      String
+  file_name       String
+  file_url        String
+  file_size       Int?
+  mime_type       String?
+  created_at      DateTime      @default(now())
+
+  // Relations
+  budget_request  BudgetRequest @relation(fields: [request_id], references: [id], onDelete: Cascade)
+
+  @@map("request_attachments")
+}
+
+// =================================
+// Event Management Models
+// =================================
+
+model Event {
+  id                    String         @id @default(cuid())
+  title                 String
+  description           String
+  type                  EventType
+  status                EventStatus    @default(DRAFT)
+  date                  DateTime
+  time                  String
+  duration              String
+  location              String
+  max_attendees         Int
+  current_attendees     Int            @default(0)
+  registration_deadline DateTime
+  is_public             Boolean        @default(true)
+  requires_approval     Boolean        @default(false)
+  created_by            String?
+  created_at            DateTime       @default(now())
+  updated_at            DateTime       @updatedAt
+
+  // Relations
+  attendees             EventAttendee[]
+
+  @@map("events")
+}
+
+model EventAttendee {
+  id          String            @id @default(cuid())
+  event_id    String
+  startup_id  String?
+  user_id     String
+  status      AttendeeStatus    @default(PENDING)
+  registered_at DateTime        @default(now())
+  updated_at  DateTime          @updatedAt
+
+  // Relations
+  event       Event             @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  startup     Startup?          @relation(fields: [startup_id], references: [id])
+  user        User              @relation(fields: [user_id], references: [id])
+
+  @@unique([event_id, user_id])
+  @@map("event_attendees")
+}
+
+// =================================
+// Resource Management Models
+// =================================
+
+model Resource {
+  id             String           @id @default(cuid())
+  title          String
+  description    String
+  category       ResourceCategory
+  type           ResourceType
+  file_url       String?
+  file_size      String?
+  thumbnail_url  String?
+  download_count Int              @default(0)
+  is_public      Boolean          @default(true)
+  uploaded_by    String
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  // Relations
+  uploader       User             @relation(fields: [uploaded_by], references: [id])
+  tags           ResourceTag[]
+  downloads      ResourceDownload[]
+
+  @@map("resources")
+}
+
+model ResourceTag {
+  id          String   @id @default(cuid())
+  resource_id String
+  tag         String
+  created_at  DateTime @default(now())
+
+  // Relations
+  resource    Resource @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+
+  @@unique([resource_id, tag])
+  @@map("resource_tags")
+}
+
+model ResourceDownload {
+  id          String   @id @default(cuid())
+  resource_id String
+  user_id     String
+  downloaded_at DateTime @default(now())
+
+  // Relations
+  resource    Resource @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id])
+
+  @@unique([resource_id, user_id])
+  @@map("resource_downloads")
+}
+
+// =================================
+// Suivi (Follow-up) Form Models
+// =================================
+
+model SuiviForm {
+  id              String         @id @default(cuid())
+  title           String
+  description     String
+  status          FormStatus     @default(DRAFT)
+  frequency       FormFrequency
+  start_date      DateTime?
+  schedule_time   String?
+  timezone        String?
+  target_all      Boolean        @default(true)
+  responses_count Int            @default(0)
+  created_by      String?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  // Relations
+  questions       SuiviQuestion[]
+  targets         SuiviTarget[]
+  responses       SuiviResponse[]
+
+  @@map("suivi_forms")
+}
+
+model SuiviQuestion {
+  id          String       @id @default(cuid())
+  form_id     String
+  type        QuestionType
+  title       String
+  description String?
+  required    Boolean      @default(false)
+  order_index Int
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  // Relations
+  form        SuiviForm           @relation(fields: [form_id], references: [id], onDelete: Cascade)
+  options     QuestionOption[]
+  answers     SuiviAnswer[]
+
+  @@map("suivi_questions")
+}
+
+model QuestionOption {
+  id          String        @id @default(cuid())
+  question_id String
+  option_text String
+  order_index Int
+  created_at  DateTime      @default(now())
+
+  // Relations
+  question    SuiviQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
+
+  @@map("question_options")
+}
+
+model SuiviTarget {
+  id         String    @id @default(cuid())
+  form_id    String
+  startup_id String
+  created_at DateTime  @default(now())
+
+  // Relations
+  form       SuiviForm @relation(fields: [form_id], references: [id], onDelete: Cascade)
+  startup    Startup   @relation(fields: [startup_id], references: [id], onDelete: Cascade)
+
+  @@unique([form_id, startup_id])
+  @@map("suivi_targets")
+}
+
+model SuiviResponse {
+  id           String      @id @default(cuid())
+  form_id      String
+  startup_id   String
+  user_id      String
+  submitted_at DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
+
+  // Relations
+  form         SuiviForm     @relation(fields: [form_id], references: [id])
+  startup      Startup       @relation(fields: [startup_id], references: [id])
+  user         User          @relation(fields: [user_id], references: [id])
+  answers      SuiviAnswer[]
+
+  @@unique([form_id, startup_id])
+  @@map("suivi_responses")
+}
+
+model SuiviAnswer {
+  id          String        @id @default(cuid())
+  response_id String
+  question_id String
+  answer_text String?
+  answer_number Int?
+  answer_rating Int?
+  answer_boolean Boolean?
+  created_at  DateTime      @default(now())
+
+  // Relations
+  response    SuiviResponse @relation(fields: [response_id], references: [id], onDelete: Cascade)
+  question    SuiviQuestion @relation(fields: [question_id], references: [id])
+
+  @@unique([response_id, question_id])
+  @@map("suivi_answers")
+}
+
+// =================================
+// System Settings Models
+// =================================
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model AdminUser {
+  id          String     @id @default(cuid())
+  name        String
+  email       String     @unique
+  password    String
+  role        AdminRole  @default(MODERATOR)
+  status      UserStatus @default(ACTIVE)
+  last_login  DateTime?
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  @@map("admin_users")
+}
+
+// =================================
+// NextAuth Models (if using NextAuth)
+// =================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// =================================
+// Enums
+// =================================
+
+enum Role {
+  ADMIN
+  STARTUP
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  INACTIVE
+}
+
+enum StartupStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum EventType {
+  WORKSHOP
+  NETWORKING
+  MASTERCLASS
+  SEMINAR
+  CONFERENCE
+  WEBINAR
+}
+
+enum EventStatus {
+  DRAFT
+  UPCOMING
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendeeStatus {
+  PENDING
+  CONFIRMED
+  ATTENDED
+  CANCELLED
+}
+
+enum ResourceCategory {
+  BUSINESS_PLAN
+  LEGAL
+  MARKETING
+  FINANCE
+  TECHNOLOGY
+  OPERATIONS
+}
+
+enum ResourceType {
+  PDF
+  VIDEO
+  TEMPLATE
+  GUIDE
+  TOOL
+}
+
+enum FormStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum FormFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  INSTANT
+}
+
+enum QuestionType {
+  TEXT
+  TEXTAREA
+  SELECT
+  MULTISELECT
+  NUMBER
+  RATING
+  CHECKBOX
+}
+
+enum AdminRole {
+  ADMIN
+  MODERATOR
+} 
